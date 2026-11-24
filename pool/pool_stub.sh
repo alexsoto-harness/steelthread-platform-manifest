@@ -24,14 +24,14 @@ remote() { [ -n "${GH_TOKEN:-}" ] && [ -n "${POOL_STATE_REPO:-}" ]; }
 api() { curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$@"; }
 URL="https://api.github.com/repos/${POOL_STATE_REPO:-none}/contents/leases.json"
 
-load() {  # prints state JSON; sets STATE_SHA for remote
+load() {  # sets globals S (state JSON) and STATE_SHA (remote only). Do not call inside $(...).
   if remote; then
-    resp=$(api "$URL?ref=$BRANCH")
+    local resp; resp=$(api "$URL?ref=$BRANCH")
     STATE_SHA=$(jq -r .sha <<<"$resp")
-    jq -r '.content | gsub("\n";"") | @base64d' <<<"$resp"
+    S=$(jq -r '.content | gsub("\n";"") | @base64d' <<<"$resp")
   else
     [ -f "$STATE" ] || echo '{}' > "$STATE"
-    cat "$STATE"
+    S=$(cat "$STATE")
   fi
 }
 save() {  # $1 = new state JSON, $2 = commit message
@@ -56,9 +56,9 @@ case "$cmd" in
     token="rt-$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     expiry="$(date -u -d '+4 hours' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v+4H +%Y-%m-%dT%H:%M:%SZ)"
-    STATE_SHA=""; s=$(load)
+    STATE_SHA=""; load
     s=$(jq -c --arg e "$env_id" --arg t "$token" --arg x "$exec_id" --arg n "$now" --arg l "$expiry" \
-          '.[$e]={release_token:$t,execution_id:$x,leased_at:$n,lease_expiry:$l}' <<<"$s")
+          '.[$e]={release_token:$t,execution_id:$x,leased_at:$n,lease_expiry:$l}' <<<"$S")
     save "$s" "pool: lease $env_id to $exec_id"
     echo "env_id=$env_id"
     echo "endpoint=https://$env_id.steelthread.example"
@@ -67,20 +67,20 @@ case "$cmd" in
     ;;
   release)
     env_id="$1"; token="$2"; outcome="$3"; sha="${4:-unknown}"
-    STATE_SHA=""; s=$(load)
-    held=$(jq -r --arg e "$env_id" '.[$e].release_token // ""' <<<"$s")
+    STATE_SHA=""; load
+    held=$(jq -r --arg e "$env_id" '.[$e].release_token // ""' <<<"$S")
     if [ -z "$held" ]; then
       echo "pool: $env_id has no active lease (already released?)"
     elif [ "$held" != "$token" ]; then
       echo "pool: release token does not match lease for $env_id" >&2; exit 1
     else
-      save "$(jq -c --arg e "$env_id" 'del(.[$e])' <<<"$s")" "pool: release $env_id ($outcome)"
+      save "$(jq -c --arg e "$env_id" 'del(.[$e])' <<<"$S")" "pool: release $env_id ($outcome)"
     fi
     echo "pool: released $env_id as $outcome (candidate $sha)"
     echo "env_release=$outcome"
     ;;
   list)
-    STATE_SHA=""; load | jq -r 'to_entries[] | "\(.key) \(.value.release_token) \(.value.execution_id) \(.value.leased_at // "-")"'
+    STATE_SHA=""; load; jq -r 'to_entries[] | "\(.key) \(.value.release_token) \(.value.execution_id) \(.value.leased_at // "-")"' <<<"$S"
     ;;
   *) echo "usage: $0 request|release|list ..." >&2; exit 2;;
 esac
