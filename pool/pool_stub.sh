@@ -7,13 +7,42 @@
 #   pool_stub.sh release <env_id> <release_token> <clean|dirty> [candidate_sha]
 #       Prints env_release=<clean|dirty>.
 #   pool_stub.sh list
-#       Prints one line per active lease: <env_id> <release_token> <execution_id>.
+#       Prints one line per active lease: <env_id> <release_token> <execution_id> <leased_at>.
 #
 # Real version: replace each function body with a call to the pool API.
-# Lease state lives in $POOL_STATE_FILE (default /tmp/steelthread_pool.json).
+#
+# Lease state:
+#   - If GH_TOKEN and POOL_STATE_REPO (owner/name) are set, leases live in leases.json on
+#     branch pool-state of that repo (GitHub contents API). Any delegate pod sees the same
+#     state, so S5 and the reaper work wherever they run.
+#   - Otherwise leases live in $POOL_STATE_FILE (default /tmp/steelthread_pool.json).
+# Needs bash, jq, curl, base64. No python.
 set -euo pipefail
 STATE="${POOL_STATE_FILE:-/tmp/steelthread_pool.json}"
-[ -f "$STATE" ] || echo '{}' > "$STATE"
+BRANCH="${POOL_STATE_BRANCH:-pool-state}"
+remote() { [ -n "${GH_TOKEN:-}" ] && [ -n "${POOL_STATE_REPO:-}" ]; }
+api() { curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$@"; }
+URL="https://api.github.com/repos/${POOL_STATE_REPO:-none}/contents/leases.json"
+
+load() {  # prints state JSON; sets STATE_SHA for remote
+  if remote; then
+    resp=$(api "$URL?ref=$BRANCH")
+    STATE_SHA=$(jq -r .sha <<<"$resp")
+    jq -r '.content | gsub("\n";"") | @base64d' <<<"$resp"
+  else
+    [ -f "$STATE" ] || echo '{}' > "$STATE"
+    cat "$STATE"
+  fi
+}
+save() {  # $1 = new state JSON, $2 = commit message
+  if remote; then
+    body=$(jq -n --arg m "$2" --arg c "$(printf '%s\n' "$1" | base64 | tr -d '\n')" \
+                 --arg s "$STATE_SHA" --arg b "$BRANCH" '{message:$m,content:$c,sha:$s,branch:$b}')
+    api -X PUT "$URL" -d "$body" >/dev/null
+  else
+    printf '%s\n' "$1" > "$STATE"
+  fi
+}
 
 cmd="${1:-}"; shift || true
 case "$cmd" in
@@ -25,13 +54,12 @@ case "$cmd" in
     fi
     env_id="intt-$(date +%s | tail -c 5)"
     token="rt-$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-    expiry="$(date -u -d '+4 hours' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)"
-    python3 - "$STATE" "$env_id" "$token" "$exec_id" <<'PY'
-import json,sys
-p,e,t,x=sys.argv[1:]
-s=json.load(open(p)); s[e]={"release_token":t,"execution_id":x}
-json.dump(s,open(p,"w"))
-PY
+    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    expiry="$(date -u -d '+4 hours' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v+4H +%Y-%m-%dT%H:%M:%SZ)"
+    STATE_SHA=""; s=$(load)
+    s=$(jq -c --arg e "$env_id" --arg t "$token" --arg x "$exec_id" --arg n "$now" --arg l "$expiry" \
+          '.[$e]={release_token:$t,execution_id:$x,leased_at:$n,lease_expiry:$l}' <<<"$s")
+    save "$s" "pool: lease $env_id to $exec_id"
     echo "env_id=$env_id"
     echo "endpoint=https://$env_id.steelthread.example"
     echo "release_token=$token"
@@ -39,20 +67,20 @@ PY
     ;;
   release)
     env_id="$1"; token="$2"; outcome="$3"; sha="${4:-unknown}"
-    python3 - "$STATE" "$env_id" <<'PY'
-import json,sys
-p,e=sys.argv[1:]
-s=json.load(open(p)); s.pop(e,None); json.dump(s,open(p,"w"))
-PY
+    STATE_SHA=""; s=$(load)
+    held=$(jq -r --arg e "$env_id" '.[$e].release_token // ""' <<<"$s")
+    if [ -z "$held" ]; then
+      echo "pool: $env_id has no active lease (already released?)"
+    elif [ "$held" != "$token" ]; then
+      echo "pool: release token does not match lease for $env_id" >&2; exit 1
+    else
+      save "$(jq -c --arg e "$env_id" 'del(.[$e])' <<<"$s")" "pool: release $env_id ($outcome)"
+    fi
     echo "pool: released $env_id as $outcome (candidate $sha)"
     echo "env_release=$outcome"
     ;;
   list)
-    python3 - "$STATE" <<'PY'
-import json,sys
-for e,v in json.load(open(sys.argv[1])).items():
-    print(e, v["release_token"], v["execution_id"])
-PY
+    STATE_SHA=""; load | jq -r 'to_entries[] | "\(.key) \(.value.release_token) \(.value.execution_id) \(.value.leased_at // "-")"'
     ;;
   *) echo "usage: $0 request|release|list ..." >&2; exit 2;;
 esac
