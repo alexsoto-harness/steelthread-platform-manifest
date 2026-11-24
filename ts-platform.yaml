@@ -1,0 +1,7 @@
+# Stands in for ts-platform.yaml in ts-cloudformation-service.
+# Each component is pinned to an image tag and digest. Values are fake.
+components:
+  ingest-api:  { ImageTag: 4.3.22-1a2b3c4, ImageDigest: "sha256:1111111111111111111111111111111111111111111111111111111111aaaa" }
+  calc-engine: { ImageTag: 2.8.1-5d6e7f8,  ImageDigest: "sha256:2222222222222222222222222222222222222222222222222222222222bbbb" }
+  lineage-svc: { ImageTag: 1.9.0-9a0b1c2,  ImageDigest: "sha256:3333333333333333333333333333333333333333333333333333333333cccc" }
+  ui-gateway:  { ImageTag: 6.0.4-3d4e5f6,  ImageDigest: "sha256:4444444444444444444444444444444444444444444444444444444444dddd" }

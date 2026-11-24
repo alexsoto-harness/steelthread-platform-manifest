@@ -1,0 +1,14 @@
+# Tiny stand-in for the platform root template. SSM parameters only, no compute.
+# Not deployed in the demo (stubs only). Kept so readers see the shape of the real step.
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Steel Thread demo root stack (SSM parameters only)
+Parameters:
+  EnvId:       { Type: String }
+  DeployedSha: { Type: String }
+Resources:
+  DeployedShaParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/steelthread/${EnvId}/deployed_sha"
+      Type: String
+      Value: !Ref DeployedSha

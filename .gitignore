@@ -1,0 +1,6 @@
+__pycache__/
+.pytest_cache/
+*.pyc
+seed.json
+evidence.json
+report*.xml

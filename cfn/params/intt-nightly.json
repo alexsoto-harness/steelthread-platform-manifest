@@ -1,0 +1,4 @@
+[
+  { "ParameterKey": "EnvId",       "ParameterValue": "intt-nightly" },
+  { "ParameterKey": "DeployedSha", "ParameterValue": "REPLACED_AT_RUNTIME" }
+]

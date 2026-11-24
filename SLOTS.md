@@ -1,0 +1,15 @@
+# Slots in the nightly LKG workflow
+
+Each stage of `steelthread_nightly_lkg` is a slot. A slot has an owner, a stub, and a contract. To make the workflow real, replace the stub with a step that meets the same contract.
+
+| Stage | Owner | What the stub does | What the real step must do | Inputs | Outputs | Pass/fail rule |
+|---|---|---|---|---|---|---|
+| S1 Resolve candidate | Platform | Reads `development` HEAD and tag `lkg` with the GitHub API. Counts commits between them. | Same. No change needed. | Repo, branch, tag name | `candidate_sha`, `lkg_sha`, `delta_commits` | Fails if the API call fails. Passes with 0 delta commits (nothing new to validate). |
+| S2 Reset env to LKG | Emil | Calls `pool_stub.sh request`. Returns `not_yet` for `pool_wait_rounds` attempts, then leases. Prints the CloudFormation updates it stands for. | Lease an env from the pool. Update the root stacks to the LKG SHA, then to the candidate SHA. | `lkg_sha`, `candidate_sha` | `env_id`, `endpoint`, `release_token`, `deploy_status` | Request retries every 60 s, up to 30 times. Deploy retries 2 times on timeout. Fails if the deploy still fails. |
+| S3 Seed data | Andrei | Runs `seed/seed.sh`. Writes `seed.json`. | Load the reference datasets into the leased env. | `env_id`, `endpoint` | `dataset_id` | Fails if seeding fails. |
+| S4 Integration suites | Andrei | Runs pytest in 4 shards with `split_tests`. A separate step group stands in for dispatching the existing `ts-tests-api` suite and collecting its JUnit. | Dispatch the existing suites where they run today. Poll for completion. Download JUnit. Upload it to Harness. | `env_id`, `endpoint`, `dataset_id` | `tests_total`, `tests_failed`, `tests_failed_not_quarantined`, `tests_quarantined` | Quarantined failures do not count. Failure continues to S5 so the env is released. |
+| S5 Release env | Emil | Calls `pool_stub.sh release`. | Release the lease. Mark the env dirty if the deploy failed. | `env_id`, `release_token`, `deploy_status` | `env_release` (`clean` or `dirty`) | Runs on every exit path except abort. A reaper frees envs left by an abort. |
+| S6 Evidence and Jira | QE | Builds `evidence.json`. Creates and updates a Jira ticket. | Same. Add any evidence QE needs (dashboards, Zephyr links). | All outputs above | `evidence.json`, Jira key | Fails if the Jira call fails. |
+| S7 Sign-offs | QE, Product, Compliance | Three parallel approvals. Each shows the evidence summary. | Same. Some may become automatic later. | Evidence summary | Approver, time, comment per role | Rejection fails the run. |
+| S8 LKG gate | Release manager | Runs policy `steelthread_lkg_promotion` on the evidence. On pass, moves tag `lkg`. On fail, holds it. | Same. | `evidence.json`, approvals, `hazard_analysis_closed` | New `lkg` SHA or held message | Any policy deny fails the stage. Retry from this stage keeps earlier approvals. |
+| S9 Simulated production | Release manager | Prints what it stands for. | Package templates to S3. Update the Service Catalog product. Upgrade Tetra-hosted accounts. | `lkg_sha` | None | Placeholder. |
