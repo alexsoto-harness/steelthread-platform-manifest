@@ -1,7 +1,10 @@
 # Harness ECS task definition (RegisterTaskDefinition request, lower camel case).
 # Hello world: public nginx image. The "version" is the manifest SHA, passed as an env var.
-# force_bad_release: when FORCE_BAD is "true" the container exits at start, so ECS
-# never reaches steady state and the stage rolls back. Deterministic, no Verify needed.
+# force_bad_release: when FORCE_BAD is "true" the container still serves, but a busy
+# loop pins the CPU. The canary looks up, and Verify (CloudWatch CPUUtilization,
+# higher is risk) should flag it against the primary, so the stage rolls back.
+# (The earlier crash-at-start design was not caught by the canary step or Verify;
+# it only rolled back after the rolling deploy timed out.)
 family: steelthread-app
 requiresCompatibilities:
   - FARGATE
@@ -27,7 +30,7 @@ containerDefinitions:
       - sh
       - -c
     command:
-      - 'if [ "$FORCE_BAD" = "true" ]; then echo "bad release $CANDIDATE_SHA: exiting at start"; exit 1; fi; echo "steelthread $CANDIDATE_SHA" > /usr/share/nginx/html/index.html; exec nginx -g "daemon off;"'
+      - 'echo "steelthread $CANDIDATE_SHA" > /usr/share/nginx/html/index.html; if [ "$FORCE_BAD" = "true" ]; then echo "bad release $CANDIDATE_SHA: CPU hog"; (while :; do :; done) & fi; exec nginx -g "daemon off;"'
 tags:
   - key: demo
     value: tetrascience
