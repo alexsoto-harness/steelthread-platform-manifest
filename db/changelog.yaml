@@ -1,0 +1,39 @@
+# Liquibase changelog for the Steel Thread demo. One small table in its own schema.
+databaseChangeLog:
+  - changeSet:
+      id: steelthread-1
+      author: steelthread
+      changes:
+        - createTable:
+            tableName: steelthread_release
+            columns:
+              - column:
+                  name: id
+                  type: int
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+              - column:
+                  name: candidate_sha
+                  type: varchar(64)
+              - column:
+                  name: deployed_at
+                  type: timestamp
+                  defaultValueComputed: CURRENT_TIMESTAMP
+      rollback:
+        - dropTable:
+            tableName: steelthread_release
+  - changeSet:
+      id: steelthread-2
+      author: steelthread
+      changes:
+        - addColumn:
+            tableName: steelthread_release
+            columns:
+              - column:
+                  name: env_id
+                  type: varchar(64)
+      rollback:
+        - dropColumn:
+            tableName: steelthread_release
+            columnName: env_id

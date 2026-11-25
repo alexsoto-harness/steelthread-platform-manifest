@@ -13,3 +13,21 @@ Each stage of `steelthread_nightly_lkg` is a slot. A slot has an owner, a stub, 
 | S7 Sign-offs | QE, Product, Compliance | Three parallel approvals. Each shows the evidence summary. | Same. Some may become automatic later. | Evidence summary | Approver, time, comment per role | Rejection fails the run. |
 | S8 LKG gate | Release manager | Runs policy `steelthread_lkg_promotion` on the evidence. On pass, moves tag `lkg`. On fail, holds it. | Same. | `evidence.json`, approvals, `hazard_analysis_closed` | New `lkg` SHA or held message | Any policy deny fails the stage. Retry from this stage keeps earlier approvals. |
 | S9 Simulated production | Release manager | Prints what it stands for. | Package templates to S3. Update the Service Catalog product. Upgrade Tetra-hosted accounts. | `lkg_sha` | None | Placeholder. |
+
+## v2 pipeline `steelthread_nightly_lkg_v2`
+
+v2 uses a standard 7-stage skeleton. Stages 2 and 6 each run two parallel variations (ECS and Lambda). The Lambda variation is built and always skipped in this demo.
+
+| Stage | Owner | Steps | Inputs | Outputs | Pass/fail rule |
+|---|---|---|---|---|---|
+| 1 Prepare | Platform, Emil | Resolve candidate (Http, GitHub compare API). Request env (pool stub, retry 30 x 60 s). Reset env to LKG (stub). | Repo, branch, tag `lkg` | `candidate_sha`, `lkg_sha`, `env_id`, `release_token` | Fails if the API call or the lease fails. |
+| 2a Deploy to INTT, ECS | Platform | CloudFormation Create Stack (inline `cfn/intt-ecs-support.yaml`), DB Schema Apply (`db/changelog.yaml`), ECS Rolling Deploy (`ecs/*.yaml`). | `candidate_sha`, `env_id` | Stack outputs, running ECS service at the candidate SHA | Rolls back ECS and the stack on failure. |
+| 2b Deploy to INTT, Lambda | Platform | CloudFormation Create Stack (remote `cfn/lambda-support.yaml`), AWS Lambda Deploy (`lambda/`). | `candidate_sha`, `env_id` | Lambda version | Always skipped in this demo. |
+| 3 Validate in INTT | Andrei | Seed data, 4 shards, existing-suite stub, count, verdict. | `env_id`, `dataset_id` | Test counts | Failure continues to Decide. |
+| 4 Decide | QE, Release manager | Release env, build evidence, policy `steelthread_lkg_decision`, 3 Jira sign-off tickets. | All of the above | `evidence.json`, 3 HD keys | Any deny fails the run; Sign Off never starts. |
+| 5 Sign Off | QE, Product, Compliance | 3 parallel Jira Approvals (HD Story `Approved`), then move tag `lkg`. | 3 HD keys | New `lkg` SHA | A rejection fails the run. |
+| 6a Deploy to Prod, ECS | Release manager | DB Schema Apply, ECS Canary Deploy, Verify, Canary Delete, ECS Rolling Deploy. Stage rollback restores ECS and the DB. | `candidate_sha` | Prod ECS service at the candidate SHA | `force_bad_release=true` makes the container exit at start, so the stage rolls back every time. |
+| 6b Deploy to Prod, Lambda | Release manager | CloudFormation Create Stack, AWS Lambda Deploy. | `candidate_sha` | Lambda version | Always skipped in this demo. |
+| 7 Release | Product | FME flag `steelthread_calc_v2`: go dark, on for `continuous_tenants`, off for `gxp_tenants`; kill switch on failure. | None | Flag state | Always skipped in this demo. |
+
+The env pool is symbolic in v2: `env_id` names the stacks and tags, and INTT always deploys to one ECS service.

@@ -1,0 +1,35 @@
+# Harness ECS task definition (RegisterTaskDefinition request, lower camel case).
+# Hello world: public nginx image. The "version" is the manifest SHA, passed as an env var.
+# force_bad_release: when FORCE_BAD is "true" the container exits at start, so ECS
+# never reaches steady state and the stage rolls back. Deterministic, no Verify needed.
+family: steelthread-app
+requiresCompatibilities:
+  - FARGATE
+networkMode: awsvpc
+cpu: "256"
+memory: "512"
+executionRoleArn: arn:aws:iam::759984737373:role/ecsTaskExecutionRole
+containerDefinitions:
+  - name: app
+    image: public.ecr.aws/nginx/nginx:stable-alpine
+    essential: true
+    portMappings:
+      - containerPort: 80
+        protocol: tcp
+    environment:
+      - name: CANDIDATE_SHA
+        value: "<+serviceVariables.candidate_sha>"
+      - name: ENV_ID
+        value: "<+serviceVariables.env_id>"
+      - name: FORCE_BAD
+        value: "<+serviceVariables.force_bad>"
+    entryPoint:
+      - sh
+      - -c
+    command:
+      - 'if [ "$FORCE_BAD" = "true" ]; then echo "bad release $CANDIDATE_SHA: exiting at start"; exit 1; fi; echo "steelthread $CANDIDATE_SHA" > /usr/share/nginx/html/index.html; exec nginx -g "daemon off;"'
+tags:
+  - key: demo
+    value: tetrascience
+  - key: owner
+    value: alex.soto

@@ -1,0 +1,36 @@
+# Remote template for deploy_intt_lambda and deploy_prod_lambda (fetched from Git,
+# to show remote vs inline templates).
+# Stands in for "queues and parameters" that ship with a release.
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Steel Thread demo - Lambda support resources (SSM parameter + SQS queue)
+Parameters:
+  CandidateSha:
+    Type: String
+  EnvId:
+    Type: String
+Resources:
+  DeployedSha:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /steelthread/${EnvId}/lambda/deployed_sha
+      Type: String
+      Value: !Ref CandidateSha
+      Tags:
+        demo: tetrascience
+        owner: alex.soto
+  WorkQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub steelthread-${EnvId}-lambda-work
+      Tags:
+        - Key: demo
+          Value: tetrascience
+        - Key: owner
+          Value: alex.soto
+        - Key: candidate_sha
+          Value: !Ref CandidateSha
+Outputs:
+  QueueUrl:
+    Value: !Ref WorkQueue
+  ShaParameter:
+    Value: !Ref DeployedSha

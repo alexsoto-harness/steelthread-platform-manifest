@@ -1,0 +1,19 @@
+# Harness ECS service definition (CreateService request, lower camel case).
+# No load balancer. Public subnets in the default VPC, public IP so the task can pull the image.
+launchType: FARGATE
+serviceName: steelthread-app
+desiredCount: 1
+networkConfiguration:
+  awsvpcConfiguration:
+    securityGroups:
+      - sg-83c9d0ca
+    subnets:
+      - subnet-5b826a07
+      - subnet-e7bc4480
+    assignPublicIp: ENABLED
+deploymentConfiguration:
+  maximumPercent: 200
+  minimumHealthyPercent: 100
+  deploymentCircuitBreaker:
+    enable: false
+    rollback: false

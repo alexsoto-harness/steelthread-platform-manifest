@@ -1,0 +1,17 @@
+{
+  "functionName": "steelthread-app",
+  "runtime": "python3.12",
+  "handler": "handler.handler",
+  "role": "arn:aws:iam::759984737373:role/steelthread-lambda-role",
+  "memorySize": 128,
+  "timeout": 5,
+  "environment": {
+    "variables": {
+      "CANDIDATE_SHA": "<+serviceVariables.candidate_sha>"
+    }
+  },
+  "tags": {
+    "demo": "tetrascience",
+    "owner": "alex.soto"
+  }
+}
