@@ -1,5 +1,5 @@
 {
-  "functionName": "steelthread-app",
+  "functionName": "steelthread-app-<+env.identifier>",
   "runtime": "python3.12",
   "handler": "handler.handler",
   "role": "arn:aws:iam::759984737373:role/AWSLambdaBasicExecutionRole",
