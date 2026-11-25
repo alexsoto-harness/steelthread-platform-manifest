@@ -2,7 +2,7 @@
   "functionName": "steelthread-app",
   "runtime": "python3.12",
   "handler": "handler.handler",
-  "role": "arn:aws:iam::759984737373:role/steelthread-lambda-role",
+  "role": "arn:aws:iam::759984737373:role/AWSLambdaBasicExecutionRole",
   "memorySize": 128,
   "timeout": 5,
   "environment": {
